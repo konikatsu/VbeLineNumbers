@@ -5,3 +5,4 @@ backup_*/
 *.user
 *.suo
 *.cache
+VbeLineNumbers_Test.accdb
