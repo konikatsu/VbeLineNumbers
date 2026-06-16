@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace VbeLineNumbers
@@ -13,16 +15,20 @@ namespace VbeLineNumbers
         private int _visibleLineCount = 1;
         private float _lineHeight = 16.0f;
         private float _topPadding;
+        private readonly Color _backgroundColor;
         private WindowHandleOwner _ownerWindow;
 
         public LineNumberOverlay()
         {
+            _backgroundColor = LoadBackgroundColor();
+
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = false;
 
-            BackColor = Color.White;
+            BackColor = Color.Fuchsia;
+            TransparencyKey = Color.Fuchsia;
             ForeColor = Color.DarkRed;
 
             Font = new Font(
@@ -222,6 +228,21 @@ namespace VbeLineNumbers
         {
             base.OnPaint(e);
 
+            int backgroundTop = (int)Math.Round(_topPadding);
+            int backgroundHeight = Math.Max(
+                1,
+                (int)Math.Ceiling(_visibleLineCount * _lineHeight));
+
+            using (Brush backgroundBrush = new SolidBrush(_backgroundColor))
+            {
+                e.Graphics.FillRectangle(
+                    backgroundBrush,
+                    0,
+                    backgroundTop,
+                    ClientSize.Width,
+                    backgroundHeight);
+            }
+
             for (int index = 0;
                  index < _visibleLineCount;
                  index++)
@@ -281,6 +302,108 @@ namespace VbeLineNumbers
             {
                 oldFont.Dispose();
             }
+        }
+
+        private static Color LoadBackgroundColor()
+        {
+            Color defaultColor = Color.FromArgb(240, 240, 240);
+            string configPath = Path.Combine(
+                Path.GetDirectoryName(
+                    Assembly.GetExecutingAssembly().Location),
+                "VbeLineNumbers.ini");
+
+            if (!File.Exists(configPath))
+            {
+                return defaultColor;
+            }
+
+            try
+            {
+                foreach (string rawLine in File.ReadAllLines(configPath))
+                {
+                    string line = rawLine.Trim();
+
+                    if (line.Length == 0 ||
+                        line.StartsWith(";", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    int separatorIndex = line.IndexOf('=');
+
+                    if (separatorIndex <= 0)
+                    {
+                        continue;
+                    }
+
+                    string key = line.Substring(0, separatorIndex).Trim();
+
+                    if (!string.Equals(
+                            key,
+                            "BackgroundColor",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string value = line.Substring(separatorIndex + 1).Trim();
+
+                    if (TryParseColor(value, out Color color))
+                    {
+                        return color;
+                    }
+                }
+            }
+            catch (IOException exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "VbeLineNumbers: Could not read VbeLineNumbers.ini. " +
+                    exception.Message);
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "VbeLineNumbers: Could not access VbeLineNumbers.ini. " +
+                    exception.Message);
+            }
+
+            return defaultColor;
+        }
+
+        private static bool TryParseColor(
+            string value,
+            out Color color)
+        {
+            color = Color.Empty;
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            try
+            {
+                Color parsedColor = ColorTranslator.FromHtml(value);
+
+                if (parsedColor.A != 0 &&
+                    parsedColor.ToArgb() != Color.Fuchsia.ToArgb())
+                {
+                    color = parsedColor;
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                if (exception is ArgumentException ||
+                    exception is FormatException)
+                {
+                    return false;
+                }
+
+                throw;
+            }
+
+            return false;
         }
 
         private sealed class WindowHandleOwner : IWin32Window
