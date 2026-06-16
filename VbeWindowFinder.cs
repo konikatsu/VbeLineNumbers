@@ -31,6 +31,8 @@ namespace VbeLineNumbers
 
             internal IntPtr FontHandle { get; set; }
 
+            internal IntPtr FontWindowHandle { get; set; }
+
             internal NativeMethods.RECT Bounds { get; set; }
 
             internal NativeMethods.RECT RootBounds { get; set; }
@@ -77,7 +79,9 @@ namespace VbeLineNumbers
             {
                 OwnerWindowHandle = mainWindowHandle,
                 BoundsWindowHandle = candidate.WindowHandle,
-                FontWindowHandle = candidate.WindowHandle,
+                FontWindowHandle = candidate.FontWindowHandle == IntPtr.Zero
+                    ? candidate.WindowHandle
+                    : candidate.FontWindowHandle,
                 Bounds = candidate.Bounds,
                 Dpi = GetDpi(candidate.WindowHandle, mdiClientHandle),
                 NeedsCodeHeaderOffset =
@@ -189,6 +193,19 @@ namespace VbeLineNumbers
                 NativeMethods.WM_GETFONT,
                 IntPtr.Zero,
                 IntPtr.Zero);
+            IntPtr fontWindowHandle = fontHandle == IntPtr.Zero
+                ? FindFontWindowHandle(windowHandle)
+                : windowHandle;
+
+            if (fontHandle == IntPtr.Zero &&
+                fontWindowHandle != IntPtr.Zero)
+            {
+                fontHandle = NativeMethods.SendMessage(
+                    fontWindowHandle,
+                    NativeMethods.WM_GETFONT,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+            }
 
             long style = NativeMethods.GetWindowLongPtr(
                 windowHandle,
@@ -246,10 +263,75 @@ namespace VbeLineNumbers
             {
                 WindowHandle = windowHandle,
                 FontHandle = fontHandle,
+                FontWindowHandle = fontWindowHandle,
                 Bounds = rect,
                 RootBounds = rootRect,
                 Score = score
             };
+        }
+
+        private static IntPtr FindFontWindowHandle(IntPtr parentWindowHandle)
+        {
+            IntPtr result = IntPtr.Zero;
+            int bestScore = int.MinValue;
+
+            NativeMethods.EnumChildWindows(
+                parentWindowHandle,
+                delegate (IntPtr windowHandle, IntPtr parameter)
+                {
+                    if (!NativeMethods.IsWindowVisible(windowHandle))
+                    {
+                        return true;
+                    }
+
+                    IntPtr fontHandle = NativeMethods.SendMessage(
+                        windowHandle,
+                        NativeMethods.WM_GETFONT,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+
+                    if (fontHandle == IntPtr.Zero)
+                    {
+                        return true;
+                    }
+
+                    if (!NativeMethods.GetWindowRect(
+                            windowHandle,
+                            out NativeMethods.RECT rect))
+                    {
+                        return true;
+                    }
+
+                    string className = GetClassName(windowHandle);
+
+                    if (IsExcludedClass(className))
+                    {
+                        return true;
+                    }
+
+                    int score = rect.Width * rect.Height / 1000;
+
+                    if (className.IndexOf("Vba", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        score += 1000;
+                    }
+
+                    if (className.IndexOf("Edit", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        score += 1000;
+                    }
+
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        result = windowHandle;
+                    }
+
+                    return true;
+                },
+                IntPtr.Zero);
+
+            return result;
         }
 
         private static bool TryGetUsableRect(
