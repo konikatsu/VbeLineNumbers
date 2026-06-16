@@ -161,6 +161,12 @@ BackgroundOpacity=1.0
 
 ## 開発者向け
 
+開発や引き継ぎ用のメモは `docs` フォルダーにあります。
+
+- [プロジェクト引き継ぎ](docs/01_プロジェクト引き継ぎ.md)
+- [セットアップ手順](docs/02_セットアップ手順.md)
+- [Codex運用メモ](docs/03_Codex運用メモ.md)
+
 64bit Release ビルド:
 
 ```powershell
