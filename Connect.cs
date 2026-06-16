@@ -14,7 +14,10 @@ namespace VbeLineNumbers
     [ClassInterface(ClassInterfaceType.None)]
     public sealed class Connect : IDTExtensibility2
     {
-        private const string AddinRegistryPath =
+        private const string AddinRegistryPath32 =
+            @"Software\Microsoft\VBA\VBE\6.0\Addins\VbeLineNumbers.Connect";
+
+        private const string AddinRegistryPath64 =
             @"Software\Microsoft\VBA\VBE\6.0\Addins64\VbeLineNumbers.Connect";
 
         private const int TimerIntervalMilliseconds = 100;
@@ -88,7 +91,7 @@ namespace VbeLineNumbers
             using (RegistryKey baseKey = RegistryKey.OpenBaseKey(
                 RegistryHive.CurrentUser,
                 RegistryView.Registry64))
-            using (RegistryKey key = baseKey.CreateSubKey(AddinRegistryPath))
+            using (RegistryKey key = baseKey.CreateSubKey(GetAddinRegistryPath()))
             {
                 if (key == null)
                 {
@@ -126,9 +129,16 @@ namespace VbeLineNumbers
                 RegistryView.Registry64))
             {
                 baseKey.DeleteSubKeyTree(
-                    AddinRegistryPath,
+                    GetAddinRegistryPath(),
                     false);
             }
+        }
+
+        private static string GetAddinRegistryPath()
+        {
+            return Environment.Is64BitProcess
+                ? AddinRegistryPath64
+                : AddinRegistryPath32;
         }
 
         private void Timer_Tick(object sender, EventArgs e)
