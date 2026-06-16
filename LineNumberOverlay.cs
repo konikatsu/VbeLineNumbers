@@ -209,15 +209,10 @@ namespace VbeLineNumbers
 
         public float GetTextLineHeight()
         {
-            Size size = TextRenderer.MeasureText(
-                "0",
-                Font,
-                Size.Empty,
-                TextFormatFlags.NoPadding |
-                TextFormatFlags.NoClipping |
-                TextFormatFlags.SingleLine);
-
-            return Math.Max(1.0f, size.Height);
+            using (Graphics graphics = CreateGraphics())
+            {
+                return Math.Max(1.0f, Font.GetHeight(graphics));
+            }
         }
 
         protected override void WndProc(ref Message message)

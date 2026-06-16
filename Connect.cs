@@ -30,7 +30,6 @@ namespace VbeLineNumbers
         private const int TextTopPaddingPixels = 0;
         private const float LineHeightScale = 1.0f;
         private const float LineHeightCorrectionPixels = 0.0f;
-        private const float LineHeightCorrectionPixels32Bit = 0.15f;
 
         private static readonly string[] VbaCommonRegistryPaths =
         {
@@ -277,18 +276,11 @@ namespace VbeLineNumbers
             float dpiScale = dpi == 0 ? 1.0f : dpi / 96.0f;
             float correctedFontLineHeight =
                 fontLineHeight * LineHeightScale +
-                GetLineHeightCorrectionPixels() * dpiScale;
+                LineHeightCorrectionPixels * dpiScale;
 
             return Math.Max(
                 1.0f,
                 correctedFontLineHeight);
-        }
-
-        private static float GetLineHeightCorrectionPixels()
-        {
-            return Environment.Is64BitProcess
-                ? LineHeightCorrectionPixels
-                : LineHeightCorrectionPixels32Bit;
         }
 
         private static int GetLargestLineNumber(
