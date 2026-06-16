@@ -204,10 +204,15 @@ namespace VbeLineNumbers
 
         public float GetTextLineHeight()
         {
-            using (Graphics graphics = CreateGraphics())
-            {
-                return Math.Max(1.0f, Font.GetHeight(graphics));
-            }
+            Size size = TextRenderer.MeasureText(
+                "0",
+                Font,
+                Size.Empty,
+                TextFormatFlags.NoPadding |
+                TextFormatFlags.NoClipping |
+                TextFormatFlags.SingleLine);
+
+            return Math.Max(1.0f, size.Height);
         }
 
         protected override void WndProc(ref Message message)

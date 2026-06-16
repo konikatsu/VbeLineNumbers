@@ -1,5 +1,6 @@
 bin/
 obj/
+dist/
 backup_*/
 .vs/
 *.user
