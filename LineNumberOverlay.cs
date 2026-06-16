@@ -78,7 +78,7 @@ namespace VbeLineNumbers
             firstLine = Math.Max(1, firstLine);
             visibleLineCount = Math.Max(1, visibleLineCount);
             lineHeight = Math.Max(1.0f, lineHeight);
-            topPadding = Math.Max(0.0f, topPadding);
+            topPadding = Math.Max(-lineHeight, topPadding);
 
             if (_firstLine == firstLine &&
                 _visibleLineCount == visibleLineCount &&

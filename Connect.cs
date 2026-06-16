@@ -27,9 +27,9 @@ namespace VbeLineNumbers
         private const int BottomCorrectionPixels = 0;
         private const int HorizontalCorrectionPixels = 0;
         private const int BreakpointGutterWidthPixels = 0;
-        private const int TextTopPaddingPixels = 0;
+        private const int TextTopPaddingPixels = -2;
         private const float LineHeightScale = 1.0f;
-        private const float LineHeightCorrectionPixels = -0.08f;
+        private const float LineHeightCorrectionPixels = 0.0f;
 
         private static readonly string[] VbaCommonRegistryPaths =
         {
@@ -280,7 +280,9 @@ namespace VbeLineNumbers
 
             return Math.Max(
                 1.0f,
-                correctedFontLineHeight);
+                (float)Math.Round(
+                    correctedFontLineHeight,
+                    MidpointRounding.AwayFromZero));
         }
 
         private static int GetLargestLineNumber(
