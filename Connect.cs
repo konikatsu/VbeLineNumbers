@@ -154,84 +154,96 @@ namespace VbeLineNumbers
                 return;
             }
 
-            CodePane pane = _vbe.ActiveCodePane;
+            CodePane pane = null;
 
-            if (pane == null)
+            try
             {
-                HideOverlay();
-                return;
+                pane = _vbe.ActiveCodePane;
+
+                if (pane == null)
+                {
+                    HideOverlay();
+                    return;
+                }
+
+                VbeWindowFinder.CodeWindowInfo codeWindowInfo =
+                    VbeWindowFinder.GetActiveCodeWindowInfo(_vbe);
+
+                if (codeWindowInfo == null ||
+                    codeWindowInfo.BoundsWindowHandle == IntPtr.Zero ||
+                    codeWindowInfo.Bounds.Width <= 0 ||
+                    codeWindowInfo.Bounds.Height <= 0)
+                {
+                    HideOverlay();
+                    return;
+                }
+
+                IntPtr fontHandle = NativeMethods.SendMessage(
+                    codeWindowInfo.FontWindowHandle,
+                    NativeMethods.WM_GETFONT,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+
+                _overlay.SetFontFromHandle(fontHandle);
+
+                int visibleLineCount = Math.Max(1, pane.CountOfVisibleLines);
+                int firstLine = Math.Max(1, pane.TopLine);
+                int largestLineNumber = GetLargestLineNumber(pane, firstLine + visibleLineCount);
+
+                float fontLineHeight = _overlay.GetTextLineHeight();
+                float lineHeight = CalculateLineHeight(
+                    fontLineHeight,
+                    codeWindowInfo.Bounds.Height,
+                    visibleLineCount,
+                    codeWindowInfo.Dpi);
+
+                float dpiScale = codeWindowInfo.Dpi / 96.0f;
+                int topCorrection = Scale(TopCorrectionPixels, dpiScale);
+
+                if (codeWindowInfo.NeedsCodeHeaderOffset)
+                {
+                    topCorrection += Scale(CodeHeaderHeightPixels, dpiScale);
+                }
+
+                int bottomCorrection = Scale(BottomCorrectionPixels, dpiScale);
+                int horizontalCorrection = Scale(HorizontalCorrectionPixels, dpiScale);
+                int breakpointGutterWidth = Scale(BreakpointGutterWidthPixels, dpiScale);
+                int textTopPadding = Scale(TextTopPaddingPixels, dpiScale);
+                int overlayWidth = _overlay.GetPreferredWidth(largestLineNumber);
+                int visibleLinesHeight = (int)Math.Ceiling(
+                    visibleLineCount * lineHeight + Scale(4, dpiScale));
+                int overlayHeight = Math.Max(
+                    MinimumOverlayHeight,
+                    Math.Min(
+                        codeWindowInfo.Bounds.Height - topCorrection - bottomCorrection,
+                        visibleLinesHeight));
+
+                _overlay.SetBounds(
+                    codeWindowInfo.Bounds.Left -
+                        breakpointGutterWidth -
+                        overlayWidth +
+                        horizontalCorrection,
+                    codeWindowInfo.Bounds.Top + topCorrection,
+                    overlayWidth,
+                    overlayHeight);
+
+                _overlay.SetLines(
+                    firstLine,
+                    visibleLineCount,
+                    lineHeight,
+                    textTopPadding);
+
+                if (!_overlay.Visible)
+                {
+                    _overlay.ShowOwnedBy(codeWindowInfo.OwnerWindowHandle);
+                }
             }
-
-            VbeWindowFinder.CodeWindowInfo codeWindowInfo =
-                VbeWindowFinder.GetActiveCodeWindowInfo(_vbe);
-
-            if (codeWindowInfo == null ||
-                codeWindowInfo.BoundsWindowHandle == IntPtr.Zero ||
-                codeWindowInfo.Bounds.Width <= 0 ||
-                codeWindowInfo.Bounds.Height <= 0)
+            finally
             {
-                HideOverlay();
-                return;
-            }
-
-            IntPtr fontHandle = NativeMethods.SendMessage(
-                codeWindowInfo.FontWindowHandle,
-                NativeMethods.WM_GETFONT,
-                IntPtr.Zero,
-                IntPtr.Zero);
-
-            _overlay.SetFontFromHandle(fontHandle);
-
-            int visibleLineCount = Math.Max(1, pane.CountOfVisibleLines);
-            int firstLine = Math.Max(1, pane.TopLine);
-            int largestLineNumber = GetLargestLineNumber(pane, firstLine + visibleLineCount);
-
-            float fontLineHeight = _overlay.GetTextLineHeight();
-            float lineHeight = CalculateLineHeight(
-                fontLineHeight,
-                codeWindowInfo.Bounds.Height,
-                visibleLineCount,
-                codeWindowInfo.Dpi);
-
-            float dpiScale = codeWindowInfo.Dpi / 96.0f;
-            int topCorrection = Scale(TopCorrectionPixels, dpiScale);
-
-            if (codeWindowInfo.NeedsCodeHeaderOffset)
-            {
-                topCorrection += Scale(CodeHeaderHeightPixels, dpiScale);
-            }
-
-            int bottomCorrection = Scale(BottomCorrectionPixels, dpiScale);
-            int horizontalCorrection = Scale(HorizontalCorrectionPixels, dpiScale);
-            int breakpointGutterWidth = Scale(BreakpointGutterWidthPixels, dpiScale);
-            int textTopPadding = Scale(TextTopPaddingPixels, dpiScale);
-            int overlayWidth = _overlay.GetPreferredWidth(largestLineNumber);
-            int visibleLinesHeight = (int)Math.Ceiling(
-                visibleLineCount * lineHeight + Scale(4, dpiScale));
-            int overlayHeight = Math.Max(
-                MinimumOverlayHeight,
-                Math.Min(
-                    codeWindowInfo.Bounds.Height - topCorrection - bottomCorrection,
-                    visibleLinesHeight));
-
-            _overlay.SetBounds(
-                codeWindowInfo.Bounds.Left -
-                    breakpointGutterWidth -
-                    overlayWidth +
-                    horizontalCorrection,
-                codeWindowInfo.Bounds.Top + topCorrection,
-                overlayWidth,
-                overlayHeight);
-
-            _overlay.SetLines(
-                firstLine,
-                visibleLineCount,
-                lineHeight,
-                textTopPadding);
-
-            if (!_overlay.Visible)
-            {
-                _overlay.ShowOwnedBy(codeWindowInfo.OwnerWindowHandle);
+                if (pane != null && Marshal.IsComObject(pane))
+                {
+                    Marshal.ReleaseComObject(pane);
+                }
             }
         }
 
@@ -337,7 +349,6 @@ namespace VbeLineNumbers
             if (_overlay != null)
             {
                 _overlay.Hide();
-                _overlay.Close();
                 _overlay.Dispose();
                 _overlay = null;
             }

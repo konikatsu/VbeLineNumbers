@@ -372,18 +372,34 @@ namespace VbeLineNumbers
 
         private static IntPtr GetVbeMainWindowHandle(VBE vbe)
         {
+            Window mainWindow = null;
+
             try
             {
-                if (vbe == null || vbe.MainWindow == null)
+                if (vbe == null)
                 {
                     return IntPtr.Zero;
                 }
 
-                return new IntPtr(vbe.MainWindow.HWnd);
+                mainWindow = vbe.MainWindow;
+
+                if (mainWindow == null)
+                {
+                    return IntPtr.Zero;
+                }
+
+                return new IntPtr(mainWindow.HWnd);
             }
             catch (COMException)
             {
                 return IntPtr.Zero;
+            }
+            finally
+            {
+                if (mainWindow != null && Marshal.IsComObject(mainWindow))
+                {
+                    Marshal.ReleaseComObject(mainWindow);
+                }
             }
         }
     }
