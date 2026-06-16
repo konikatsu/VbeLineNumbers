@@ -216,6 +216,7 @@ namespace VbeLineNumbers
             int score = rect.Width * rect.Height / 1000;
             int depth = GetAncestorDepth(windowHandle, rootWindowHandle);
             int leftOffset = Math.Max(0, rect.Left - rootRect.Left);
+            int topOffset = Math.Max(0, rect.Top - rootRect.Top);
 
             if (!hasVerticalScroll && fontHandle == IntPtr.Zero)
             {
@@ -258,6 +259,7 @@ namespace VbeLineNumbers
             }
 
             score -= leftOffset * 200;
+            score -= topOffset * 80;
 
             return new Candidate
             {
