@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
@@ -16,16 +17,20 @@ namespace VbeLineNumbers
         private float _lineHeight = 16.0f;
         private float _topPadding;
         private readonly Color _backgroundColor;
+        private readonly double _backgroundOpacity;
         private WindowHandleOwner _ownerWindow;
 
         public LineNumberOverlay()
         {
-            _backgroundColor = LoadBackgroundColor();
+            OverlaySettings settings = LoadSettings();
+            _backgroundColor = settings.BackgroundColor;
+            _backgroundOpacity = settings.BackgroundOpacity;
 
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = false;
+            Opacity = _backgroundOpacity;
 
             BackColor = Color.Fuchsia;
             TransparencyKey = Color.Fuchsia;
@@ -309,9 +314,13 @@ namespace VbeLineNumbers
             }
         }
 
-        private static Color LoadBackgroundColor()
+        private static OverlaySettings LoadSettings()
         {
-            Color defaultColor = Color.FromArgb(240, 240, 240);
+            OverlaySettings settings = new OverlaySettings
+            {
+                BackgroundColor = Color.FromArgb(224, 224, 224),
+                BackgroundOpacity = 0.85
+            };
             string configPath = Path.Combine(
                 Path.GetDirectoryName(
                     Assembly.GetExecutingAssembly().Location),
@@ -319,7 +328,7 @@ namespace VbeLineNumbers
 
             if (!File.Exists(configPath))
             {
-                return defaultColor;
+                return settings;
             }
 
             try
@@ -343,19 +352,23 @@ namespace VbeLineNumbers
 
                     string key = line.Substring(0, separatorIndex).Trim();
 
-                    if (!string.Equals(
-                            key,
-                            "BackgroundColor",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
                     string value = line.Substring(separatorIndex + 1).Trim();
 
-                    if (TryParseColor(value, out Color color))
+                    if (string.Equals(
+                            key,
+                            "BackgroundColor",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        TryParseColor(value, out Color color))
                     {
-                        return color;
+                        settings.BackgroundColor = color;
+                    }
+                    else if (string.Equals(
+                            key,
+                            "BackgroundOpacity",
+                            StringComparison.OrdinalIgnoreCase) &&
+                        TryParseOpacity(value, out double opacity))
+                    {
+                        settings.BackgroundOpacity = opacity;
                     }
                 }
             }
@@ -372,7 +385,31 @@ namespace VbeLineNumbers
                     exception.Message);
             }
 
-            return defaultColor;
+            return settings;
+        }
+
+        private static bool TryParseOpacity(
+            string value,
+            out double opacity)
+        {
+            opacity = 1.0;
+
+            if (!double.TryParse(
+                    value,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double parsedOpacity))
+            {
+                return false;
+            }
+
+            if (parsedOpacity < 0.2 || parsedOpacity > 1.0)
+            {
+                return false;
+            }
+
+            opacity = parsedOpacity;
+            return true;
         }
 
         private static bool TryParseColor(
@@ -419,6 +456,13 @@ namespace VbeLineNumbers
             }
 
             public IntPtr Handle { get; private set; }
+        }
+
+        private struct OverlaySettings
+        {
+            internal Color BackgroundColor { get; set; }
+
+            internal double BackgroundOpacity { get; set; }
         }
     }
 }

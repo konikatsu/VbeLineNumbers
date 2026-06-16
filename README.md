@@ -129,19 +129,23 @@ README.md
   /unregister
 ```
 
-## 背景色の変更
+## 背景色と透明度の変更
 
-行番号の背景色は `VbeLineNumbers.ini` で変更できます。
+行番号の背景色と透明度は `VbeLineNumbers.ini` で変更できます。
 
 ```ini
-BackgroundColor=Gainsboro
+BackgroundColor=#E0E0E0
+BackgroundOpacity=0.85
 ```
 
 例:
 
 ```ini
 BackgroundColor=#F0F0F0
+BackgroundOpacity=1.0
 ```
+
+`BackgroundOpacity` は `0.2` から `1.0` までを指定できます。`1.0` は不透明です。
 
 変更後は、Access を終了してから起動し直してください。
 
