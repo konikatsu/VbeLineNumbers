@@ -268,17 +268,6 @@ namespace VbeLineNumbers
                 fontLineHeight * LineHeightScale +
                 LineHeightCorrectionPixels * dpiScale;
 
-            if (editorHeight > 0 && visibleLineCount > 1)
-            {
-                float viewportLineHeight = (float)editorHeight / visibleLineCount;
-
-                if (viewportLineHeight >= correctedFontLineHeight * 0.90f &&
-                    viewportLineHeight <= correctedFontLineHeight * 1.10f)
-                {
-                    return Math.Max(1.0f, viewportLineHeight);
-                }
-            }
-
             return Math.Max(
                 1.0f,
                 correctedFontLineHeight);
