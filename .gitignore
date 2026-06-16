@@ -6,3 +6,4 @@ backup_*/
 *.suo
 *.cache
 VbeLineNumbers_Test.accdb
+*.laccdb

@@ -118,6 +118,46 @@ namespace VbeLineNumbers
             }
         }
 
+        public void SetFontFromEditorSettings(
+            string fontFace,
+            float fontSizeInPoints)
+        {
+            if (string.IsNullOrWhiteSpace(fontFace) ||
+                fontSizeInPoints <= 0.0f)
+            {
+                return;
+            }
+
+            try
+            {
+                using (Font sourceFont = new Font(
+                    fontFace,
+                    fontSizeInPoints,
+                    FontStyle.Regular,
+                    GraphicsUnit.Point))
+                {
+                    if (IsSameFont(sourceFont))
+                    {
+                        return;
+                    }
+
+                    ReplaceFont(
+                        new Font(
+                            sourceFont.FontFamily,
+                            sourceFont.SizeInPoints,
+                            sourceFont.Style,
+                            GraphicsUnit.Point));
+                }
+
+                Invalidate();
+            }
+            catch (ArgumentException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "VbeLineNumbers: VBE editor font setting is unsupported.");
+            }
+        }
+
         public void ShowOwnedBy(IntPtr ownerWindowHandle)
         {
             if (Visible)

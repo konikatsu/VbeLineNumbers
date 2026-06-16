@@ -25,8 +25,15 @@ namespace VbeLineNumbers
         private const int HorizontalCorrectionPixels = 20;
         private const int BreakpointGutterWidthPixels = 0;
         private const int TextTopPaddingPixels = 0;
-        private const float LineHeightScale = 0.90f;
+        private const float LineHeightScale = 1.0f;
         private const float LineHeightCorrectionPixels = 0.0f;
+
+        private static readonly string[] VbaCommonRegistryPaths =
+        {
+            @"Software\Microsoft\VBA\7.1\Common",
+            @"Software\Microsoft\VBA\7.0\Common",
+            @"Software\Microsoft\VBA\6.0\Common"
+        };
 
         private VBE _vbe;
         private LineNumberOverlay _overlay;
@@ -184,7 +191,10 @@ namespace VbeLineNumbers
                     IntPtr.Zero,
                     IntPtr.Zero);
 
-                _overlay.SetFontFromHandle(fontHandle);
+                if (!TrySetEditorFontFromRegistry(_overlay))
+                {
+                    _overlay.SetFontFromHandle(fontHandle);
+                }
 
                 int visibleLineCount = Math.Max(1, pane.CountOfVisibleLines);
                 int firstLine = Math.Max(1, pane.TopLine);
@@ -309,6 +319,68 @@ namespace VbeLineNumbers
         private static int Scale(int value, float dpiScale)
         {
             return (int)Math.Round(value * dpiScale);
+        }
+
+        private static bool TrySetEditorFontFromRegistry(
+            LineNumberOverlay overlay)
+        {
+            foreach (string path in VbaCommonRegistryPaths)
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(path))
+                {
+                    if (key == null)
+                    {
+                        continue;
+                    }
+
+                    string fontFace = key.GetValue("FontFace") as string;
+                    object fontHeightValue = key.GetValue("FontHeight");
+
+                    if (string.IsNullOrWhiteSpace(fontFace) ||
+                        fontHeightValue == null)
+                    {
+                        continue;
+                    }
+
+                    if (!TryConvertToSingle(
+                            fontHeightValue,
+                            out float fontHeight))
+                    {
+                        continue;
+                    }
+
+                    overlay.SetFontFromEditorSettings(
+                        fontFace,
+                        fontHeight);
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryConvertToSingle(
+            object value,
+            out float result)
+        {
+            try
+            {
+                result = Convert.ToSingle(value);
+                return result > 0.0f;
+            }
+            catch (FormatException)
+            {
+            }
+            catch (InvalidCastException)
+            {
+            }
+            catch (OverflowException)
+            {
+            }
+
+            result = 0.0f;
+            return false;
         }
 
         private void HideOverlay()
