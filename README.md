@@ -1,112 +1,163 @@
 # VbeLineNumbers
 
-VbeLineNumbers is a COM add-in that displays line numbers beside the VBA editor code pane.
+Access の VBE（VBAエディター）のコード画面の左側に、行番号を表示する COM アドインです。
 
-Current target:
+主な対象:
 
-- Microsoft Access 2021 64-bit
-- Microsoft Access 2021 32-bit
-- VBE / VBA editor
+- Microsoft Access 2021 64bit
+- Microsoft Access 2021 32bit
+- VBE / VBAエディター
 - .NET Framework 4.8
 
-## 64-bit Installation
+## ダウンロード
 
-Download the 64-bit release zip from GitHub Releases and extract it to a local folder.
+最新版は GitHub Releases からダウンロードできます。
 
-The zip contains:
+[Releases](https://github.com/konikatsu/VbeLineNumbers/releases)
 
-- `VbeLineNumbers.dll`
-- `VbeLineNumbers.ini`
+Access が 64bit 版なら:
 
-Open PowerShell as Administrator and run:
+- `VbeLineNumbers-v0.1.0-x64.zip`
+
+Access が 32bit 版なら:
+
+- `VbeLineNumbers-v0.1.0-x86.zip`
+
+## Access が 32bit か 64bit か確認する
+
+Access を開いて、次の順に確認します。
+
+```text
+ファイル
+-> アカウント
+-> Access のバージョン情報
+```
+
+表示された画面に `64 ビット` または `32 ビット` と書かれています。
+
+分からない場合は、まず 64bit 版を試すのではなく、必ずこの画面で確認してください。
+
+## インストール前の準備
+
+1. ダウンロードした zip を右クリックします。
+2. `すべて展開` を選びます。
+3. 分かりやすい場所に展開します。
+
+例:
+
+```text
+C:\VbeLineNumbers\x64
+```
+
+または:
+
+```text
+C:\VbeLineNumbers\x86
+```
+
+展開したフォルダーには、次のファイルが入っています。
+
+```text
+VbeLineNumbers.dll
+VbeLineNumbers.ini
+README.md
+```
+
+`VbeLineNumbers.dll` と `VbeLineNumbers.ini` は同じフォルダーに置いてください。
+
+## 64bit Access へのインストール
+
+64bit Access を使っている場合の手順です。
+
+1. スタートメニューで `PowerShell` を検索します。
+2. `Windows PowerShell` を右クリックします。
+3. `管理者として実行` を選びます。
+4. 次のコマンドを実行します。
 
 ```powershell
 & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe" `
-  "C:\Path\To\VbeLineNumbers.dll" `
+  "C:\VbeLineNumbers\x64\VbeLineNumbers.dll" `
   /codebase
 ```
 
-Replace `C:\Path\To\VbeLineNumbers.dll` with the extracted DLL path.
+展開先を変えた場合は、`C:\VbeLineNumbers\x64\VbeLineNumbers.dll` の部分を実際の場所に変更してください。
 
-After registration, start Access and open the VBE. The add-in is registered under:
+## 32bit Access へのインストール
 
-```text
-HKCU\Software\Microsoft\VBA\VBE\6.0\Addins64\VbeLineNumbers.Connect
+32bit Access を使っている場合の手順です。
+
+1. スタートメニューで `PowerShell` を検索します。
+2. `Windows PowerShell` を右クリックします。
+3. `管理者として実行` を選びます。
+4. 次のコマンドを実行します。
+
+```powershell
+& "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe" `
+  "C:\VbeLineNumbers\x86\VbeLineNumbers.dll" `
+  /codebase
 ```
 
-## 64-bit Uninstall
+展開先を変えた場合は、`C:\VbeLineNumbers\x86\VbeLineNumbers.dll` の部分を実際の場所に変更してください。
 
-Open PowerShell as Administrator and run:
+## インストール後の確認
+
+1. Access を起動します。
+2. データベースを開きます。
+3. `Alt + F11` を押して VBE を開きます。
+4. 標準モジュールなどのコード画面を開きます。
+5. コード画面の左側に行番号が表示されれば成功です。
+
+表示されない場合は、Access を一度終了してから、もう一度起動してください。
+
+## アンインストール
+
+インストール時と同じ DLL の場所を指定して、`/unregister` を実行します。
+
+64bit 版:
 
 ```powershell
 & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe" `
-  "C:\Path\To\VbeLineNumbers.dll" `
+  "C:\VbeLineNumbers\x64\VbeLineNumbers.dll" `
   /unregister
 ```
 
-## 32-bit Installation
-
-Download the 32-bit release zip from GitHub Releases and extract it to a local folder.
-
-The zip contains:
-
-- `VbeLineNumbers.dll`
-- `VbeLineNumbers.ini`
-
-Open PowerShell as Administrator and run:
+32bit 版:
 
 ```powershell
 & "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe" `
-  "C:\Path\To\VbeLineNumbers.dll" `
-  /codebase
-```
-
-Replace `C:\Path\To\VbeLineNumbers.dll` with the extracted DLL path.
-
-After registration, start Access and open the VBE. The 32-bit add-in is registered under:
-
-```text
-HKCU\Software\Microsoft\VBA\VBE\6.0\Addins\VbeLineNumbers.Connect
-```
-
-## 32-bit Uninstall
-
-Open PowerShell as Administrator and run:
-
-```powershell
-& "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe" `
-  "C:\Path\To\VbeLineNumbers.dll" `
+  "C:\VbeLineNumbers\x86\VbeLineNumbers.dll" `
   /unregister
 ```
 
-## Settings
+## 背景色の変更
 
-`VbeLineNumbers.ini` must be placed next to `VbeLineNumbers.dll`.
+行番号の背景色は `VbeLineNumbers.ini` で変更できます。
 
 ```ini
 BackgroundColor=Gainsboro
 ```
 
-`BackgroundColor` accepts named colors such as `Gainsboro` or HTML-style values such as `#F0F0F0`.
+例:
 
-## Development Build
-
-Build the 64-bit Debug configuration:
-
-```powershell
-& "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe" `
-  VbeLineNumbers.csproj `
-  /p:Configuration=Debug `
-  /p:Platform=x64
+```ini
+BackgroundColor=#F0F0F0
 ```
 
-The Debug output is:
+変更後は、Access を終了してから起動し直してください。
 
-```text
-bin\x64\Debug\VbeLineNumbers.dll
-```
+## 注意点
 
-Build the 64-bit Release configuration:
+- このアドインはVBAコード自体を書き換えません。
+- 行番号は画面上に重ねて表示しているだけです。
+- インストールとアンインストールには管理者権限の PowerShell が必要です。
+- 64bit Access には x64 版を使ってください。
+- 32bit Access には x86 版を使ってください。
+- x64版は Access 2021 64bit で動作確認しています。
+- x86版はビルドと RegAsm 登録を確認していますが、32bit Access 実機での表示確認は未実施です。
+
+## 開発者向け
+
+64bit Release ビルド:
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe" `
@@ -115,13 +166,7 @@ Build the 64-bit Release configuration:
   /p:Platform=x64
 ```
 
-The Release output is:
-
-```text
-bin\x64\Release\VbeLineNumbers.dll
-```
-
-Build the 32-bit Release configuration:
+32bit Release ビルド:
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" `
@@ -130,15 +175,4 @@ Build the 32-bit Release configuration:
   /p:Platform=x86
 ```
 
-The 32-bit Release output is:
-
-```text
-bin\x86\Release\VbeLineNumbers.dll
-```
-
-## Notes
-
-- Keep `Guid` and `ProgId` unchanged for COM compatibility.
-- 64-bit VBE registration uses the `Addins64` registry path.
-- 32-bit VBE registration uses the `Addins` registry path.
-- Build outputs such as `bin/`, `obj/`, DLLs, PDBs, and local test databases are not committed to Git.
+COM互換性のため、既存の `Guid` と `ProgId` は変更しないでください。
