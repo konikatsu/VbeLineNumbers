@@ -24,7 +24,7 @@ namespace VbeLineNumbers
         private const int BottomCorrectionPixels = 0;
         private const int HorizontalCorrectionPixels = 20;
         private const int BreakpointGutterWidthPixels = 0;
-        private const int TextTopPaddingPixels = 0;
+        private const int TextTopPaddingPixels = 2;
         private const float LineHeightScale = 1.0f;
         private const float LineHeightCorrectionPixels = 0.0f;
 
