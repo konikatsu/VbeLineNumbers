@@ -77,9 +77,7 @@ namespace VbeLineNumbers
             {
                 OwnerWindowHandle = mainWindowHandle,
                 BoundsWindowHandle = candidate.WindowHandle,
-                FontWindowHandle = candidate.FontHandle == IntPtr.Zero
-                    ? candidate.WindowHandle
-                    : candidate.WindowHandle,
+                FontWindowHandle = candidate.WindowHandle,
                 Bounds = candidate.Bounds,
                 Dpi = GetDpi(candidate.WindowHandle, mdiClientHandle),
                 NeedsCodeHeaderOffset =
