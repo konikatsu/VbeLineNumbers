@@ -91,6 +91,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Connect.cs" />
+    <Compile Include="EditorGutter.cs" />
+    <Compile Include="LineLayout.cs" />
     <Compile Include="LineNumberOverlay.cs">
       <SubType>Form</SubType>
     </Compile>

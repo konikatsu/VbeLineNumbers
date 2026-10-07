@@ -7,483 +7,155 @@ namespace VbeLineNumbers
 {
     internal static class VbeWindowFinder
     {
-        private const int MinimumEditorWidth = 120;
-        private const int MinimumEditorHeight = 80;
-
         internal sealed class CodeWindowInfo
         {
             internal IntPtr OwnerWindowHandle { get; set; }
-
-            internal IntPtr BoundsWindowHandle { get; set; }
-
-            internal IntPtr FontWindowHandle { get; set; }
-
+            internal IntPtr EditorWindowHandle { get; set; }
+            internal IntPtr LayoutWindowHandle { get; set; }
             internal NativeMethods.RECT Bounds { get; set; }
-
+            internal NativeMethods.RECT CaretBounds { get; set; }
             internal uint Dpi { get; set; }
-
-            internal bool NeedsCodeHeaderOffset { get; set; }
-        }
-
-        private sealed class Candidate
-        {
-            internal IntPtr WindowHandle { get; set; }
-
-            internal IntPtr FontHandle { get; set; }
-
-            internal IntPtr FontWindowHandle { get; set; }
-
-            internal NativeMethods.RECT Bounds { get; set; }
-
-            internal NativeMethods.RECT RootBounds { get; set; }
-
-            internal int Score { get; set; }
         }
 
         internal static CodeWindowInfo GetActiveCodeWindowInfo(VBE vbe)
         {
-            IntPtr mainWindowHandle = GetVbeMainWindowHandle(vbe);
-
-            if (mainWindowHandle == IntPtr.Zero)
+            IntPtr main = GetVbeMainWindowHandle(vbe);
+            if (main == IntPtr.Zero || !NativeMethods.IsWindowVisible(main) ||
+                NativeMethods.IsIconic(main))
             {
                 return null;
             }
 
-            IntPtr mdiClientHandle = FindMdiClient(mainWindowHandle);
+            IntPtr mdi = IntPtr.Zero;
+            NativeMethods.EnumChildWindows(main, delegate (IntPtr handle, IntPtr parameter)
+            {
+                if (GetClassName(handle) == "MDIClient" && NativeMethods.IsWindowVisible(handle))
+                {
+                    mdi = handle;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            if (mdi == IntPtr.Zero) return null;
 
-            if (mdiClientHandle == IntPtr.Zero)
+            IntPtr editor = NativeMethods.SendMessage(
+                mdi, NativeMethods.WM_MDIGETACTIVE, IntPtr.Zero, IntPtr.Zero);
+            // ActiveCodePane can still refer to a hidden pane while the Object Browser
+            // is active. Never search other MDI children for a substitute editor.
+            if (editor == IntPtr.Zero || !NativeMethods.IsWindowVisible(editor) ||
+                GetClassName(editor) != "VbaWindow" ||
+                !TryGetClientBounds(editor, out NativeMethods.RECT client))
             {
                 return null;
             }
 
-            IntPtr searchRootHandle = GetActiveMdiChild(mdiClientHandle);
-
-            if (searchRootHandle == IntPtr.Zero)
+            NativeMethods.RECT caret = GetCaretBounds(editor);
+            NativeMethods.RECT vertical = default(NativeMethods.RECT);
+            int bestScore = 0;
+            NativeMethods.EnumChildWindows(editor, delegate (IntPtr handle, IntPtr parameter)
             {
-                searchRootHandle = mdiClientHandle;
-            }
+                if (!NativeMethods.IsWindowVisible(handle) || GetClassName(handle) != "ScrollBar")
+                    return true;
 
-            Candidate candidate = FindBestEditorCandidate(searchRootHandle);
+                long style = NativeMethods.GetWindowLongPtr(handle, NativeMethods.GWL_STYLE).ToInt64();
+                if ((style & NativeMethods.SBS_VERT) == 0 ||
+                    !NativeMethods.GetWindowRect(handle, out NativeMethods.RECT bounds) ||
+                    bounds.Height <= bounds.Width)
+                    return true;
 
-            if (candidate == null && searchRootHandle != mdiClientHandle)
+                int score = bounds.Height;
+                if (caret.Height > 0 && caret.Top >= bounds.Top - caret.Height &&
+                    caret.Top < bounds.Bottom)
+                    score += 100000;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    vertical = bounds;
+                }
+                return true;
+            }, IntPtr.Zero);
+            if (bestScore == 0) return null;
+
+            var codeBounds = new NativeMethods.RECT
             {
-                candidate = FindBestEditorCandidate(mdiClientHandle);
-            }
+                Left = client.Left,
+                Top = Math.Max(client.Top, vertical.Top),
+                Right = Math.Min(client.Right, vertical.Left),
+                Bottom = Math.Min(client.Bottom, vertical.Bottom)
+            };
+            if (codeBounds.Width <= 0 || codeBounds.Height <= 0) return null;
 
-            if (candidate == null)
-            {
-                return null;
-            }
-
+            long editorStyle = NativeMethods.GetWindowLongPtr(editor, NativeMethods.GWL_STYLE).ToInt64();
+            uint dpi = NativeMethods.GetDpiForWindow(editor);
             return new CodeWindowInfo
             {
-                OwnerWindowHandle = mainWindowHandle,
-                BoundsWindowHandle = candidate.WindowHandle,
-                FontWindowHandle = candidate.FontWindowHandle == IntPtr.Zero
-                    ? candidate.WindowHandle
-                    : candidate.FontWindowHandle,
-                Bounds = candidate.Bounds,
-                Dpi = GetDpi(candidate.WindowHandle, mdiClientHandle),
-                NeedsCodeHeaderOffset =
-                    candidate.Bounds.Top <= candidate.RootBounds.Top + 10
+                OwnerWindowHandle = main,
+                EditorWindowHandle = editor,
+                LayoutWindowHandle = (editorStyle & NativeMethods.WS_MAXIMIZE) != 0 ? mdi : editor,
+                Bounds = codeBounds,
+                CaretBounds = caret,
+                Dpi = dpi == 0 ? 96U : dpi
             };
         }
 
-        private static IntPtr FindMdiClient(IntPtr mainWindowHandle)
+        internal static bool TryGetClientBounds(IntPtr handle, out NativeMethods.RECT bounds)
         {
-            IntPtr result = IntPtr.Zero;
-
-            NativeMethods.EnumChildWindows(
-                mainWindowHandle,
-                delegate (IntPtr windowHandle, IntPtr parameter)
-                {
-                    if (!NativeMethods.IsWindowVisible(windowHandle))
-                    {
-                        return true;
-                    }
-
-                    string className = GetClassName(windowHandle);
-
-                    if (!string.Equals(
-                            className,
-                            "MDIClient",
-                            StringComparison.Ordinal))
-                    {
-                        return true;
-                    }
-
-                    if (!TryGetUsableRect(windowHandle, out NativeMethods.RECT rect))
-                    {
-                        return true;
-                    }
-
-                    result = windowHandle;
-                    return false;
-                },
-                IntPtr.Zero);
-
-            return result;
-        }
-
-        private static Candidate FindBestEditorCandidate(IntPtr parentWindowHandle)
-        {
-            Candidate bestCandidate = null;
-
-            NativeMethods.EnumChildWindows(
-                parentWindowHandle,
-                delegate (IntPtr windowHandle, IntPtr parameter)
-                {
-                    Candidate candidate = CreateCandidate(
-                        windowHandle,
-                        parentWindowHandle);
-
-                    if (candidate != null &&
-                        (bestCandidate == null ||
-                         candidate.Score > bestCandidate.Score))
-                    {
-                        bestCandidate = candidate;
-                    }
-
-                    return true;
-                },
-                IntPtr.Zero);
-
-            return bestCandidate;
-        }
-
-        private static Candidate CreateCandidate(
-            IntPtr windowHandle,
-            IntPtr rootWindowHandle)
-        {
-            if (windowHandle == IntPtr.Zero ||
-                !NativeMethods.IsWindowVisible(windowHandle))
+            bounds = default(NativeMethods.RECT);
+            if (!NativeMethods.GetClientRect(handle, out NativeMethods.RECT client)) return false;
+            var origin = new NativeMethods.POINT();
+            if (!NativeMethods.ClientToScreen(handle, ref origin)) return false;
+            bounds = new NativeMethods.RECT
             {
-                return null;
-            }
-
-            if (!IsDescendantOf(windowHandle, rootWindowHandle))
-            {
-                return null;
-            }
-
-            if (!TryGetUsableRect(windowHandle, out NativeMethods.RECT rect))
-            {
-                return null;
-            }
-
-            if (!TryGetUsableRect(rootWindowHandle, out NativeMethods.RECT rootRect))
-            {
-                return null;
-            }
-
-            if (IsNearlySameBounds(rect, rootRect))
-            {
-                return null;
-            }
-
-            string className = GetClassName(windowHandle);
-
-            if (IsExcludedClass(className))
-            {
-                return null;
-            }
-
-            IntPtr fontHandle = NativeMethods.SendMessage(
-                windowHandle,
-                NativeMethods.WM_GETFONT,
-                IntPtr.Zero,
-                IntPtr.Zero);
-            IntPtr fontWindowHandle = fontHandle == IntPtr.Zero
-                ? FindFontWindowHandle(windowHandle)
-                : windowHandle;
-
-            if (fontHandle == IntPtr.Zero &&
-                fontWindowHandle != IntPtr.Zero)
-            {
-                fontHandle = NativeMethods.SendMessage(
-                    fontWindowHandle,
-                    NativeMethods.WM_GETFONT,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-            }
-
-            long style = NativeMethods.GetWindowLongPtr(
-                windowHandle,
-                NativeMethods.GWL_STYLE).ToInt64();
-
-            bool hasVerticalScroll = (style & NativeMethods.WS_VSCROLL) != 0;
-            bool hasHorizontalScroll = (style & NativeMethods.WS_HSCROLL) != 0;
-            int score = rect.Width * rect.Height / 1000;
-            int depth = GetAncestorDepth(windowHandle, rootWindowHandle);
-            int leftOffset = Math.Max(0, rect.Left - rootRect.Left);
-            int topOffset = Math.Max(0, rect.Top - rootRect.Top);
-
-            if (!hasVerticalScroll && fontHandle == IntPtr.Zero)
-            {
-                score -= 10000;
-            }
-
-            if (fontHandle != IntPtr.Zero)
-            {
-                score += 8000;
-            }
-
-            if (hasVerticalScroll)
-            {
-                score += 12000;
-            }
-
-            if (hasHorizontalScroll)
-            {
-                score += 3000;
-            }
-
-            if (className.IndexOf("Vba", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 1000;
-            }
-
-            if (className.IndexOf("Edit", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                score += 1000;
-            }
-
-            if (depth > 0)
-            {
-                score += Math.Min(depth, 5) * 2500;
-            }
-
-            if (rect.Top <= rootRect.Top + 10)
-            {
-                score -= 4000;
-            }
-
-            score -= leftOffset * 200;
-            score -= topOffset * 80;
-
-            return new Candidate
-            {
-                WindowHandle = windowHandle,
-                FontHandle = fontHandle,
-                FontWindowHandle = fontWindowHandle,
-                Bounds = rect,
-                RootBounds = rootRect,
-                Score = score
+                Left = origin.X, Top = origin.Y,
+                Right = origin.X + client.Width, Bottom = origin.Y + client.Height
             };
+            return true;
         }
 
-        private static IntPtr FindFontWindowHandle(IntPtr parentWindowHandle)
+        private static NativeMethods.RECT GetCaretBounds(IntPtr editor)
         {
-            IntPtr result = IntPtr.Zero;
-            int bestScore = int.MinValue;
-
-            NativeMethods.EnumChildWindows(
-                parentWindowHandle,
-                delegate (IntPtr windowHandle, IntPtr parameter)
-                {
-                    if (!NativeMethods.IsWindowVisible(windowHandle))
-                    {
-                        return true;
-                    }
-
-                    IntPtr fontHandle = NativeMethods.SendMessage(
-                        windowHandle,
-                        NativeMethods.WM_GETFONT,
-                        IntPtr.Zero,
-                        IntPtr.Zero);
-
-                    if (fontHandle == IntPtr.Zero)
-                    {
-                        return true;
-                    }
-
-                    if (!NativeMethods.GetWindowRect(
-                            windowHandle,
-                            out NativeMethods.RECT rect))
-                    {
-                        return true;
-                    }
-
-                    string className = GetClassName(windowHandle);
-
-                    if (IsExcludedClass(className))
-                    {
-                        return true;
-                    }
-
-                    int score = rect.Width * rect.Height / 1000;
-
-                    if (className.IndexOf("Vba", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        score += 1000;
-                    }
-
-                    if (className.IndexOf("Edit", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        score += 1000;
-                    }
-
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        result = windowHandle;
-                    }
-
-                    return true;
-                },
-                IntPtr.Zero);
-
-            return result;
-        }
-
-        private static bool TryGetUsableRect(
-            IntPtr windowHandle,
-            out NativeMethods.RECT rect)
-        {
-            if (!NativeMethods.GetWindowRect(windowHandle, out rect))
+            var info = new NativeMethods.GUITHREADINFO
             {
-                return false;
-            }
+                Size = Marshal.SizeOf(typeof(NativeMethods.GUITHREADINFO))
+            };
+            uint threadId = NativeMethods.GetWindowThreadProcessId(editor, IntPtr.Zero);
+            if (!NativeMethods.GetGUIThreadInfo(threadId, ref info) ||
+                info.Caret == IntPtr.Zero ||
+                (info.Caret != editor && !NativeMethods.IsChild(editor, info.Caret)))
+                return default(NativeMethods.RECT);
 
-            return rect.Width >= MinimumEditorWidth &&
-                   rect.Height >= MinimumEditorHeight;
+            var origin = new NativeMethods.POINT();
+            if (!NativeMethods.ClientToScreen(info.Caret, ref origin))
+                return default(NativeMethods.RECT);
+            var bounds = info.CaretBounds;
+            bounds.Left += origin.X;
+            bounds.Right += origin.X;
+            bounds.Top += origin.Y;
+            bounds.Bottom += origin.Y;
+            return bounds;
         }
 
-        private static bool IsNearlySameBounds(
-            NativeMethods.RECT first,
-            NativeMethods.RECT second)
+        private static string GetClassName(IntPtr handle)
         {
-            return Math.Abs(first.Left - second.Left) <= 4 &&
-                   Math.Abs(first.Top - second.Top) <= 4 &&
-                   Math.Abs(first.Right - second.Right) <= 4 &&
-                   Math.Abs(first.Bottom - second.Bottom) <= 4;
-        }
-
-        private static bool IsDescendantOf(
-            IntPtr windowHandle,
-            IntPtr ancestorWindowHandle)
-        {
-            if (windowHandle == ancestorWindowHandle)
-            {
-                return false;
-            }
-
-            IntPtr current = windowHandle;
-
-            while (current != IntPtr.Zero)
-            {
-                current = NativeMethods.GetAncestor(
-                    current,
-                    NativeMethods.GA_PARENT);
-
-                if (current == ancestorWindowHandle)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static int GetAncestorDepth(
-            IntPtr windowHandle,
-            IntPtr ancestorWindowHandle)
-        {
-            int depth = 0;
-            IntPtr current = windowHandle;
-
-            while (current != IntPtr.Zero)
-            {
-                current = NativeMethods.GetAncestor(
-                    current,
-                    NativeMethods.GA_PARENT);
-
-                depth++;
-
-                if (current == ancestorWindowHandle)
-                {
-                    return depth;
-                }
-            }
-
-            return 0;
-        }
-
-        private static bool IsExcludedClass(string className)
-        {
-            return string.Equals(className, "ComboBox", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(className, "ScrollBar", StringComparison.OrdinalIgnoreCase) ||
-                   className.IndexOf("Combo", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   className.IndexOf("ScrollBar", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   className.IndexOf("Toolbar", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   className.IndexOf("Status", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static IntPtr GetActiveMdiChild(IntPtr mdiClientHandle)
-        {
-            return NativeMethods.SendMessage(
-                mdiClientHandle,
-                NativeMethods.WM_MDIGETACTIVE,
-                IntPtr.Zero,
-                IntPtr.Zero);
-        }
-
-        private static uint GetDpi(
-            IntPtr preferredWindowHandle,
-            IntPtr fallbackWindowHandle)
-        {
-            uint dpi = NativeMethods.GetDpiForWindow(preferredWindowHandle);
-
-            if (dpi == 0 && fallbackWindowHandle != IntPtr.Zero)
-            {
-                dpi = NativeMethods.GetDpiForWindow(fallbackWindowHandle);
-            }
-
-            return dpi == 0 ? 96U : dpi;
-        }
-
-        private static string GetClassName(IntPtr windowHandle)
-        {
-            StringBuilder className = new StringBuilder(256);
-
-            NativeMethods.GetClassName(
-                windowHandle,
-                className,
-                className.Capacity);
-
-            return className.ToString();
+            var name = new StringBuilder(256);
+            NativeMethods.GetClassName(handle, name, name.Capacity);
+            return name.ToString();
         }
 
         private static IntPtr GetVbeMainWindowHandle(VBE vbe)
         {
             Window mainWindow = null;
-
             try
             {
-                if (vbe == null)
-                {
-                    return IntPtr.Zero;
-                }
-
+                if (vbe == null) return IntPtr.Zero;
                 mainWindow = vbe.MainWindow;
-
-                if (mainWindow == null)
-                {
-                    return IntPtr.Zero;
-                }
-
-                return new IntPtr(mainWindow.HWnd);
+                return mainWindow == null ? IntPtr.Zero : new IntPtr(mainWindow.HWnd);
             }
-            catch (COMException)
-            {
-                return IntPtr.Zero;
-            }
+            catch (COMException) { return IntPtr.Zero; }
             finally
             {
                 if (mainWindow != null && Marshal.IsComObject(mainWindow))
-                {
                     Marshal.ReleaseComObject(mainWindow);
-                }
             }
         }
     }

@@ -18,6 +18,7 @@ using System.Runtime.InteropServices;
 // 参照できなくなります。COM からこのアセンブリ内の型にアクセスする必要がある場合は、
 // その型の ComVisible 属性を true に設定してください。
 [assembly: ComVisible(false)]
+[assembly: InternalsVisibleTo("VbeLineNumbers.Tests")]
 
 // このプロジェクトが COM に公開される場合、次の GUID が typelib の ID になります
 [assembly: Guid("78a0a9ff-4947-4adf-96a7-2c8df930e720")]

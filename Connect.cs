@@ -21,15 +21,6 @@ namespace VbeLineNumbers
             @"Software\Microsoft\VBA\VBE\6.0\Addins64\VbeLineNumbers.Connect";
 
         private const int TimerIntervalMilliseconds = 100;
-        private const int MinimumOverlayHeight = 80;
-        private const int TopCorrectionPixels = 0;
-        private const int CodeHeaderHeightPixels = 62;
-        private const int BottomCorrectionPixels = 0;
-        private const int HorizontalCorrectionPixels = 0;
-        private const int BreakpointGutterWidthPixels = 0;
-        private const int TextTopPaddingPixels = -2;
-        private const float LineHeightScale = 1.0f;
-        private const float LineHeightCorrectionPixels = 0.0f;
 
         private static readonly string[] VbaCommonRegistryPaths =
         {
@@ -41,6 +32,11 @@ namespace VbeLineNumbers
         private VBE _vbe;
         private LineNumberOverlay _overlay;
         private Timer _timer;
+        private readonly EditorGutter _gutter = new EditorGutter();
+        private IntPtr _metricsWindow;
+        private float _metricsFontHeight;
+        private int _lineHeight;
+        private int _textTopOffset;
         private DateTime _lastExceptionLogUtc = DateTime.MinValue;
 
         public void OnConnection(
@@ -180,6 +176,7 @@ namespace VbeLineNumbers
                 if (pane == null)
                 {
                     HideOverlay();
+                    _gutter.Restore();
                     return;
                 }
 
@@ -187,71 +184,103 @@ namespace VbeLineNumbers
                     VbeWindowFinder.GetActiveCodeWindowInfo(_vbe);
 
                 if (codeWindowInfo == null ||
-                    codeWindowInfo.BoundsWindowHandle == IntPtr.Zero ||
                     codeWindowInfo.Bounds.Width <= 0 ||
                     codeWindowInfo.Bounds.Height <= 0)
+                {
+                    HideOverlay();
+                    _gutter.Restore();
+                    return;
+                }
+
+                // Owned top-level forms also need explicit hiding when another app
+                // or a modal VBE dialog has focus.
+                if (NativeMethods.GetAncestor(NativeMethods.GetForegroundWindow(), NativeMethods.GA_ROOT) !=
+                    codeWindowInfo.OwnerWindowHandle)
                 {
                     HideOverlay();
                     return;
                 }
 
                 IntPtr fontHandle = NativeMethods.SendMessage(
-                    codeWindowInfo.FontWindowHandle,
+                    codeWindowInfo.EditorWindowHandle,
                     NativeMethods.WM_GETFONT,
                     IntPtr.Zero,
                     IntPtr.Zero);
 
-                if (!TrySetEditorFontFromRegistry(_overlay))
+                if (!TrySetEditorFontFromRegistry(_overlay, codeWindowInfo.Dpi))
                 {
                     _overlay.SetFontFromHandle(fontHandle);
                 }
 
                 int visibleLineCount = Math.Max(1, pane.CountOfVisibleLines);
                 int firstLine = Math.Max(1, pane.TopLine);
-                int largestLineNumber = GetLargestLineNumber(pane, firstLine + visibleLineCount);
+                int moduleLines = GetModuleLineCount(pane, firstLine + visibleLineCount - 1);
+                int overlayWidth = _overlay.GetPreferredWidth(moduleLines, codeWindowInfo.Dpi);
 
-                float fontLineHeight = _overlay.GetTextLineHeight();
-                float lineHeight = CalculateLineHeight(
-                    fontLineHeight,
-                    codeWindowInfo.Bounds.Height,
-                    visibleLineCount,
-                    codeWindowInfo.Dpi);
-
-                float dpiScale = codeWindowInfo.Dpi / 96.0f;
-                int topCorrection = Scale(TopCorrectionPixels, dpiScale);
-
-                if (codeWindowInfo.NeedsCodeHeaderOffset)
+                if (!_gutter.Reserve(codeWindowInfo.LayoutWindowHandle, overlayWidth, out int overlayLeft))
                 {
-                    topCorrection += Scale(CodeHeaderHeightPixels, dpiScale);
+                    HideOverlay();
+                    _gutter.Restore();
+                    return;
                 }
 
-                int bottomCorrection = Scale(BottomCorrectionPixels, dpiScale);
-                int horizontalCorrection = Scale(HorizontalCorrectionPixels, dpiScale);
-                int breakpointGutterWidth = Scale(BreakpointGutterWidthPixels, dpiScale);
-                int textTopPadding = Scale(TextTopPaddingPixels, dpiScale);
-                int overlayWidth = _overlay.GetPreferredWidth(largestLineNumber);
-                int visibleLinesHeight = (int)Math.Ceiling(
-                    visibleLineCount * lineHeight + Scale(4, dpiScale));
-                int overlayHeight = Math.Max(
-                    MinimumOverlayHeight,
-                    Math.Min(
-                        codeWindowInfo.Bounds.Height - topCorrection - bottomCorrection,
-                        visibleLinesHeight));
+                // Reserving the gutter resizes a maximized MDI child synchronously.
+                // Read its client/scrollbar/caret positions again after layout.
+                codeWindowInfo = VbeWindowFinder.GetActiveCodeWindowInfo(_vbe);
+                if (codeWindowInfo == null)
+                {
+                    HideOverlay();
+                    _gutter.Restore();
+                    return;
+                }
+
+                float fontLineHeight = _overlay.GetTextLineHeight();
+                if (_metricsWindow != codeWindowInfo.EditorWindowHandle ||
+                    Math.Abs(_metricsFontHeight - fontLineHeight) > 0.01f)
+                {
+                    _metricsWindow = codeWindowInfo.EditorWindowHandle;
+                    _metricsFontHeight = fontLineHeight;
+                    _lineHeight = LineLayout.GetLineHeight(
+                        fontLineHeight, codeWindowInfo.Bounds.Height, visibleLineCount);
+                    _textTopOffset = -(int)Math.Round(3 * codeWindowInfo.Dpi / 96.0f);
+                }
+
+                NativeMethods.RECT caret = codeWindowInfo.CaretBounds;
+                if (caret.Height > 0 && caret.Height <= codeWindowInfo.Bounds.Height)
+                {
+                    _lineHeight = caret.Height;
+                    pane.GetSelection(out int startLine, out int startColumn,
+                        out int endLine, out int endColumn);
+                    if (startLine == endLine)
+                    {
+                        int offset = caret.Top - (startLine - firstLine) * _lineHeight -
+                            codeWindowInfo.Bounds.Top;
+                        if (Math.Abs(offset) <= _lineHeight / 2)
+                            _textTopOffset = offset;
+                    }
+                }
+
+                int overlayTop = codeWindowInfo.Bounds.Top + _textTopOffset;
+                int overlayHeight = codeWindowInfo.Bounds.Bottom - overlayTop;
+                int drawnLines = LineLayout.GetDrawnLineCount(
+                    firstLine, moduleLines, overlayHeight, _lineHeight);
+                if (drawnLines == 0)
+                {
+                    HideOverlay();
+                    return;
+                }
 
                 _overlay.SetBounds(
-                    codeWindowInfo.Bounds.Left -
-                        breakpointGutterWidth -
-                        overlayWidth +
-                        horizontalCorrection,
-                    codeWindowInfo.Bounds.Top + topCorrection,
+                    overlayLeft,
+                    overlayTop,
                     overlayWidth,
                     overlayHeight);
 
                 _overlay.SetLines(
                     firstLine,
-                    visibleLineCount,
-                    lineHeight,
-                    textTopPadding);
+                    drawnLines,
+                    _lineHeight,
+                    0);
 
                 if (!_overlay.Visible)
                 {
@@ -267,25 +296,7 @@ namespace VbeLineNumbers
             }
         }
 
-        private static float CalculateLineHeight(
-            float fontLineHeight,
-            int editorHeight,
-            int visibleLineCount,
-            uint dpi)
-        {
-            float dpiScale = dpi == 0 ? 1.0f : dpi / 96.0f;
-            float correctedFontLineHeight =
-                fontLineHeight * LineHeightScale +
-                LineHeightCorrectionPixels * dpiScale;
-
-            return Math.Max(
-                1.0f,
-                (float)Math.Round(
-                    correctedFontLineHeight,
-                    MidpointRounding.AwayFromZero));
-        }
-
-        private static int GetLargestLineNumber(
+        private static int GetModuleLineCount(
             CodePane pane,
             int visibleLastLine)
         {
@@ -297,7 +308,7 @@ namespace VbeLineNumbers
 
                 if (module != null)
                 {
-                    return Math.Max(visibleLastLine, module.CountOfLines);
+                    return Math.Max(1, module.CountOfLines);
                 }
             }
             catch (COMException exception)
@@ -317,13 +328,8 @@ namespace VbeLineNumbers
             return visibleLastLine;
         }
 
-        private static int Scale(int value, float dpiScale)
-        {
-            return (int)Math.Round(value * dpiScale);
-        }
-
         private static bool TrySetEditorFontFromRegistry(
-            LineNumberOverlay overlay)
+            LineNumberOverlay overlay, uint dpi)
         {
             foreach (string path in VbaCommonRegistryPaths)
             {
@@ -352,7 +358,7 @@ namespace VbeLineNumbers
 
                     overlay.SetFontFromEditorSettings(
                         fontFace,
-                        fontHeight);
+                        fontHeight, dpi);
 
                     return true;
                 }
@@ -418,6 +424,8 @@ namespace VbeLineNumbers
                 _timer.Dispose();
                 _timer = null;
             }
+
+            _gutter.Restore();
 
             if (_overlay != null)
             {

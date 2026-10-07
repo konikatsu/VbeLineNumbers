@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <TargetFrameworkVersion>.NETFramework,Version=v4.8</TargetFrameworkVersion>
+    <TargetPlatform>x64</TargetPlatform>
+  </RunConfiguration>
+  <MSTest>
+    <DisableAppDomain>true</DisableAppDomain>
+  </MSTest>
+</RunSettings>

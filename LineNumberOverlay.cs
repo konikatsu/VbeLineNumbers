@@ -29,6 +29,7 @@ namespace VbeLineNumbers
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.None;
             TopMost = false;
             Opacity = _backgroundOpacity;
 
@@ -131,7 +132,7 @@ namespace VbeLineNumbers
 
         public void SetFontFromEditorSettings(
             string fontFace,
-            float fontSizeInPoints)
+            float fontSizeInPoints, uint dpi)
         {
             if (string.IsNullOrWhiteSpace(fontFace) ||
                 fontSizeInPoints <= 0.0f)
@@ -143,9 +144,9 @@ namespace VbeLineNumbers
             {
                 using (Font sourceFont = new Font(
                     fontFace,
-                    fontSizeInPoints,
+                    fontSizeInPoints * (dpi == 0 ? 96 : dpi) / 72.0f,
                     FontStyle.Regular,
-                    GraphicsUnit.Point))
+                    GraphicsUnit.Pixel))
                 {
                     if (IsSameFont(sourceFont))
                     {
@@ -155,9 +156,9 @@ namespace VbeLineNumbers
                     ReplaceFont(
                         new Font(
                             sourceFont.FontFamily,
-                            sourceFont.SizeInPoints,
+                            sourceFont.Size,
                             sourceFont.Style,
-                            GraphicsUnit.Point));
+                            GraphicsUnit.Pixel));
                 }
 
                 Invalidate();
@@ -186,7 +187,7 @@ namespace VbeLineNumbers
             Show(_ownerWindow);
         }
 
-        public int GetPreferredWidth(int largestLineNumber)
+        public int GetPreferredWidth(int largestLineNumber, uint dpi)
         {
             largestLineNumber = Math.Max(1, largestLineNumber);
 
@@ -203,8 +204,8 @@ namespace VbeLineNumbers
                 TextFormatFlags.SingleLine);
 
             return Math.Max(
-                28,
-                size.Width + HorizontalPadding);
+                (int)Math.Ceiling(28 * dpi / 96.0f),
+                size.Width + (int)Math.Ceiling(HorizontalPadding * dpi / 96.0f));
         }
 
         public float GetTextLineHeight()
@@ -270,7 +271,6 @@ namespace VbeLineNumbers
                     TextFormatFlags.Right |
                     TextFormatFlags.Top |
                     TextFormatFlags.NoPadding |
-                    TextFormatFlags.NoClipping |
                     TextFormatFlags.SingleLine);
             }
         }
